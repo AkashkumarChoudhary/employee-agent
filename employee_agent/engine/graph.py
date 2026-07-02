@@ -16,12 +16,12 @@ from employee_agent.rag.retriever import Retriever
 from employee_agent.schemas import AgentState
 
 
-def build_graph(provider: Provider, retriever: Retriever, checkpointer=None):
+def build_graph(provider: Provider, retriever: Retriever, checkpointer=None, tool_client=None):
     g = StateGraph(AgentState)
     g.add_node("manager", make_manager())
     g.add_node("parser", make_parser(retriever))
     g.add_node("retriever", make_retriever_node(retriever))
-    g.add_node("analyst", make_analyst(provider))
+    g.add_node("analyst", make_analyst(provider, tool_client=tool_client))
     g.add_node("verifier", make_verifier(provider))
     g.add_node("gate", make_gate())
     g.add_node("hitl", make_hitl())

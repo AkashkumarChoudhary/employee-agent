@@ -40,7 +40,7 @@ def make_retriever_node(retriever: Retriever):
     return retriever_node
 
 
-def make_analyst(provider: Provider):
+def make_analyst(provider: Provider, tool_client=None):
     async def analyst(state: AgentState) -> dict:
         role = state["role_config"]
         evidence = "\n".join(f"- {c.text}" for c in state["retrieved_chunks"])
@@ -53,6 +53,24 @@ def make_analyst(provider: Provider):
         assessment = await provider.generate_structured(
             system=role.system_prompt, prompt=prompt, schema=CandidateAssessment
         )
+        if tool_client is not None and "verify_certification" in getattr(
+            role, "tool_allowlist", []
+        ):
+            cert = assessment.top_skills[0] if assessment.top_skills else "n/a"
+            try:
+                result = await tool_client.call(
+                    "verify_certification",
+                    {"name": assessment.candidate_name, "certification": cert},
+                )
+                note = (
+                    f" [MCP verify_certification: {cert} -> "
+                    f"verified={result.get('verified')}]"
+                )
+                assessment = assessment.model_copy(
+                    update={"rationale": assessment.rationale + note}
+                )
+            except Exception:  # noqa: BLE001 - resilient: continue without the tool
+                pass
         return {"assessment": assessment}
 
     return analyst

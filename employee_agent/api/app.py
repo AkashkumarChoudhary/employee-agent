@@ -30,6 +30,7 @@ from employee_agent.config import Settings, get_settings
 from employee_agent.engine.checkpoint import sqlite_checkpointer
 from employee_agent.engine.graph import build_graph
 from employee_agent.engine.state import new_state
+from employee_agent.mcp_tools.client import MCPToolClient
 from employee_agent.providers.factory import build_provider
 from employee_agent.rag import ingest
 from employee_agent.rag.retriever import Retriever
@@ -57,6 +58,13 @@ def _owned_or_404(request: Request, job_id: str, api_key: str):
     if rec is None or rec.owner != api_key:
         raise HTTPException(status_code=404, detail="job not found")
     return rec
+
+
+def _graph_for(app, saver):
+    return build_graph(
+        app.state.provider, app.state.retriever,
+        checkpointer=saver, tool_client=app.state.tool_client,
+    )
 
 
 def _rate_key(request: Request) -> str:
@@ -119,9 +127,7 @@ async def create_job(
     request.app.state.jobs.create(job_id, owner=api_key, role=role)
     state = new_state(job_id, get_role(role), job_description, resume_text)
     async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
-        graph = build_graph(
-            request.app.state.provider, request.app.state.retriever, checkpointer=saver
-        )
+        graph = _graph_for(request.app, saver)
         result = await graph.ainvoke(state, _thread(job_id))
     status = _status_from_result(result)
     request.app.state.jobs.set_status(job_id, status)
@@ -132,9 +138,7 @@ async def create_job(
 async def get_job(job_id: str, request: Request, api_key: str = Depends(require_api_key)):
     rec = _owned_or_404(request, job_id, api_key)
     async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
-        graph = build_graph(
-            request.app.state.provider, request.app.state.retriever, checkpointer=saver
-        )
+        graph = _graph_for(request.app, saver)
         snap = await graph.aget_state(_thread(job_id))
     assessment = snap.values.get("assessment")
     return JobResponse(
@@ -150,9 +154,7 @@ async def approve_job(
 ):
     _owned_or_404(request, job_id, api_key)
     async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
-        graph = build_graph(
-            request.app.state.provider, request.app.state.retriever, checkpointer=saver
-        )
+        graph = _graph_for(request.app, saver)
         result = await graph.ainvoke(Command(resume=body.model_dump()), _thread(job_id))
     status = _status_from_result(result)
     request.app.state.jobs.set_status(job_id, status)
@@ -167,9 +169,7 @@ async def approve_job(
 async def job_trace(job_id: str, request: Request, api_key: str = Depends(require_api_key)):
     _owned_or_404(request, job_id, api_key)
     async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
-        graph = build_graph(
-            request.app.state.provider, request.app.state.retriever, checkpointer=saver
-        )
+        graph = _graph_for(request.app, saver)
         history = [snap async for snap in graph.aget_state_history(_thread(job_id))]
     steps: list[TraceStep] = []
     for snap in reversed(history):
@@ -188,6 +188,7 @@ def create_app(settings: Settings | None = None, provider=None) -> FastAPI:
     app.state.settings = s
     app.state.provider = prov
     app.state.retriever = Retriever(prov, VectorStore(path=s.chroma_path))
+    app.state.tool_client = MCPToolClient(allowlist={"verify_certification"})
     app.state.jobs = JobStore()
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
