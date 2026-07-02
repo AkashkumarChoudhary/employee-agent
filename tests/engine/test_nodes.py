@@ -65,4 +65,4 @@ async def test_analyst_produces_structured_assessment():
         _base_state(retrieved_chunks=[Chunk(text="5 yrs Python", source="resume", score=0.9)])
     )
     assert out["assessment"] == CANNED
-    assert out["status"] == "done"
+    assert "status" not in out

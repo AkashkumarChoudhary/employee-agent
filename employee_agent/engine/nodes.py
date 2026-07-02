@@ -1,3 +1,5 @@
+from langgraph.types import interrupt
+
 from employee_agent.providers.base import Provider
 from employee_agent.rag import ingest
 from employee_agent.rag.retriever import Retriever
@@ -51,7 +53,7 @@ def make_analyst(provider: Provider):
         assessment = await provider.generate_structured(
             system=role.system_prompt, prompt=prompt, schema=CandidateAssessment
         )
-        return {"assessment": assessment, "status": "done"}
+        return {"assessment": assessment}
 
     return analyst
 
@@ -83,3 +85,39 @@ def make_verifier(provider: Provider):
         return update
 
     return verifier
+
+
+def make_gate():
+    async def gate(state: AgentState) -> dict:
+        return {"status": "awaiting_human"}
+
+    return gate
+
+
+def make_hitl():
+    async def hitl(state: AgentState) -> dict:
+        decision = interrupt(
+            {
+                "assessment": state["assessment"].model_dump(),
+                "message": "Approve, edit, or reject this candidate assessment.",
+            }
+        ) or {}
+        action = decision.get("action", "approve")
+        assessment = state["assessment"]
+        if action == "edit":
+            assessment = assessment.model_copy(update=decision.get("edits", {}))
+            assessment = assessment.model_copy(update={"human_approved": True})
+        elif action == "reject":
+            assessment = assessment.model_copy(update={"human_approved": False})
+        else:  # approve
+            assessment = assessment.model_copy(update={"human_approved": True})
+        return {"assessment": assessment}
+
+    return hitl
+
+
+def make_finalizer():
+    async def finalizer(state: AgentState) -> dict:
+        return {"status": "done" if state["assessment"].human_approved else "error"}
+
+    return finalizer
