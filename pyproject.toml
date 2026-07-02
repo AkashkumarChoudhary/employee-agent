@@ -11,6 +11,8 @@ dependencies = [
     "langchain-text-splitters>=0.2",
     "pypdf>=4.0",
     "chromadb>=0.5",
+    "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=2.0",
 ]
 
 [project.optional-dependencies]
