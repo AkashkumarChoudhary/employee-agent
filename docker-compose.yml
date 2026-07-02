@@ -1,0 +1,28 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PROVIDER: ${PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ENABLE_FAILOVER: "false"
+      API_KEYS: ${API_KEYS:-demo-key}
+      SQLITE_PATH: /data/employee_agent.db
+      CHROMA_PATH: /data/chroma
+    volumes:
+      - agent-data:/data
+
+  ui:
+    build: .
+    command: streamlit run employee_agent/ui/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+    ports:
+      - "8501:8501"
+    environment:
+      EMPLOYEE_AGENT_API_URL: http://api:8000
+      EMPLOYEE_AGENT_API_KEY: ${API_KEYS:-demo-key}
+    depends_on:
+      - api
+
+volumes:
+  agent-data:
