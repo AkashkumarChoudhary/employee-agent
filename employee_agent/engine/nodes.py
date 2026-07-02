@@ -1,7 +1,7 @@
 from employee_agent.providers.base import Provider
 from employee_agent.rag import ingest
 from employee_agent.rag.retriever import Retriever
-from employee_agent.schemas import AgentState, CandidateAssessment
+from employee_agent.schemas import AgentState, CandidateAssessment, VerifierVerdict
 
 RESUME_CHUNK_SIZE = 800
 RESUME_CHUNK_OVERLAP = 100
@@ -54,3 +54,32 @@ def make_analyst(provider: Provider):
         return {"assessment": assessment, "status": "done"}
 
     return analyst
+
+
+def make_verifier(provider: Provider):
+    async def verifier(state: AgentState) -> dict:
+        a = state["assessment"]
+        evidence = "\n".join(f"- {c.text}" for c in state["retrieved_chunks"])
+        prompt = (
+            "Candidate assessment to check:\n"
+            f"- recommendation: {a.recommendation}\n"
+            f"- rationale: {a.rationale}\n"
+            f"- top_skills: {a.top_skills}\n\n"
+            f"Source evidence (retrieved resume chunks):\n{evidence}\n\n"
+            "Are the assessment's claims grounded in the evidence? If not, decide "
+            "whether to retry retrieval or retry analysis."
+        )
+        verdict = await provider.generate_structured(
+            system=(
+                "You are a strict grounding checker implementing CRAG/Self-RAG. "
+                "Only accept claims supported by the evidence."
+            ),
+            prompt=prompt,
+            schema=VerifierVerdict,
+        )
+        update = {"verifier_verdict": verdict}
+        if verdict.action != "accept":
+            update["retry_count"] = state["retry_count"] + 1
+        return update
+
+    return verifier
