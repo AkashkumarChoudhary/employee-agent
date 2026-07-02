@@ -7,6 +7,15 @@ _SETTINGS = Settings(anonymized_telemetry=False)
 
 
 class VectorStore:
+    """Chroma-backed vector store, one collection per ``namespace``.
+
+    Production uses a persistent client at ``path`` namespaced per unique
+    ``job_id``. When ``path`` is ``None`` an in-memory (ephemeral) client is
+    used for tests; note chromadb allows only ONE ephemeral instance per
+    process, so ephemeral ``VectorStore`` instances share a backing store —
+    tests must therefore use distinct namespaces to stay isolated.
+    """
+
     def __init__(self, path: str | None = None):
         self._client = (
             chromadb.PersistentClient(path=path, settings=_SETTINGS)

@@ -399,6 +399,11 @@ git commit -m "feat: rag retriever (embed + index + retrieve)"
 - Vector store namespaces are isolated; empty adds/queries are safe no-ops.
 - No network calls and no model downloads in the test suite (Chroma telemetry disabled; embeddings always precomputed via `FakeProvider`).
 
+## Implementation Notes (discovered during execution)
+
+- **chromadb 1.5.9** was installed (the `>=0.5` floor resolved to 1.x). The watch-point held up: `get_or_create_collection(name=..., embedding_function=None)` works and never downloads a model; an exact-vector query returns distance `0.0` (→ score `1.0`).
+- **Ephemeral chromadb is one instance per process.** `chromadb.EphemeralClient()` shares a single in-memory backing store across all `VectorStore()` instances (and rejects a second ephemeral instance with different settings). Per-instance databases can't be cleanly auto-created. Consequence: tests reusing the same namespace with different embedding dimensions collide (`InvalidArgumentError: Collection expecting embedding with dimension of N`). Resolved by giving each test file distinct namespace prefixes (`store-*`, `retr-*`); production is unaffected because it uses a persistent path namespaced per unique `job_id`. This constraint is documented in `VectorStore`'s docstring.
+
 ## Next Plan
 
 Plan 3 — **The graph**: LangGraph orchestrator-worker nodes (Manager → Parser → Retriever → Analyst) over the `AgentState` `TypedDict`, a SQLite checkpointer, and Gemini structured output. It will depend on `ingest.split_text`/`load_document`, `Retriever`, `build_provider`, and the Plan 1 schemas.
