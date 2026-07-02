@@ -13,11 +13,18 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from langgraph.types import Command
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from employee_agent.api.auth import require_api_key
-from employee_agent.api.schemas import CreateJobResponse, JobResponse
+from employee_agent.api.schemas import (
+    ApproveRequest,
+    CreateJobResponse,
+    JobResponse,
+    TraceResponse,
+    TraceStep,
+)
 from employee_agent.api.store import JobStore
 from employee_agent.config import Settings, get_settings
 from employee_agent.engine.checkpoint import sqlite_checkpointer
@@ -134,6 +141,43 @@ async def get_job(job_id: str, request: Request, api_key: str = Depends(require_
         job_id=job_id, status=rec.status,
         assessment=assessment.model_dump() if assessment else None,
     )
+
+
+@router.post("/jobs/{job_id}/approve", response_model=JobResponse)
+async def approve_job(
+    job_id: str, body: ApproveRequest, request: Request,
+    api_key: str = Depends(require_api_key),
+):
+    _owned_or_404(request, job_id, api_key)
+    async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
+        graph = build_graph(
+            request.app.state.provider, request.app.state.retriever, checkpointer=saver
+        )
+        result = await graph.ainvoke(Command(resume=body.model_dump()), _thread(job_id))
+    status = _status_from_result(result)
+    request.app.state.jobs.set_status(job_id, status)
+    assessment = result.get("assessment")
+    return JobResponse(
+        job_id=job_id, status=status,
+        assessment=assessment.model_dump() if assessment else None,
+    )
+
+
+@router.get("/jobs/{job_id}/trace", response_model=TraceResponse)
+async def job_trace(job_id: str, request: Request, api_key: str = Depends(require_api_key)):
+    _owned_or_404(request, job_id, api_key)
+    async with sqlite_checkpointer(request.app.state.settings.sqlite_path) as saver:
+        graph = build_graph(
+            request.app.state.provider, request.app.state.retriever, checkpointer=saver
+        )
+        history = [snap async for snap in graph.aget_state_history(_thread(job_id))]
+    steps: list[TraceStep] = []
+    for snap in reversed(history):
+        if snap.next:
+            node = snap.next[0]
+            if node != "__start__":
+                steps.append(TraceStep(step=(snap.metadata or {}).get("step", 0), node=node))
+    return TraceResponse(job_id=job_id, steps=steps)
 
 
 def create_app(settings: Settings | None = None, provider=None) -> FastAPI:
