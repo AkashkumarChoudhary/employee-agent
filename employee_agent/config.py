@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     temperature: float = 0.0
     sqlite_path: str = "./data/employee_agent.db"
     chroma_path: str = "./data/chroma"
+    api_keys: str = "demo-key"
+    rate_limit: str = "100/minute"
+
+    def allowed_api_keys(self) -> set[str]:
+        return {k.strip() for k in self.api_keys.split(",") if k.strip()}
 
 
 @lru_cache
