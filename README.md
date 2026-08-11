@@ -59,16 +59,17 @@ Built phase-by-phase (spec + plans in [`docs/superpowers/`](docs/superpowers/)),
 
 ## Quickstart
 
+Full machine setup — prerequisites, both run paths, troubleshooting — is in [`SETUP.md`](SETUP.md).
+
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install pydantic pydantic-settings google-genai ollama langchain-text-splitters \
-  pypdf chromadb langgraph langgraph-checkpoint-sqlite fastapi python-multipart \
-  slowapi uvicorn mcp streamlit pytest pytest-asyncio httpx
+pip install -r requirements.lock.txt    # exact, tested versions
+pip install -e ".[dev]"
 
-pytest -q                       # 90+ tests, fully offline (no network, no cost)
+pytest -q                       # 92 tests, fully offline (no network, no cost)
 
 # Run the API + UI locally
-export PROVIDER=fake            # or: PROVIDER=gemini GEMINI_API_KEY=... ENABLE_FAILOVER=false
+cp .env.example .env            # set GEMINI_API_KEY; PROVIDER=fake works offline
 uvicorn employee_agent.api.app:create_app --factory --reload
 EMPLOYEE_AGENT_API_URL=http://localhost:8000 EMPLOYEE_AGENT_API_KEY=demo-key \
   streamlit run employee_agent/ui/streamlit_app.py
@@ -76,6 +77,9 @@ EMPLOYEE_AGENT_API_URL=http://localhost:8000 EMPLOYEE_AGENT_API_KEY=demo-key \
 # Or with Docker
 docker compose up --build       # API on :8000, UI on :8501
 ```
+
+> `PROVIDER=fake` exercises the whole graph offline but fills the assessment with schema
+> defaults (blank name, score 0) — use a real `GEMINI_API_KEY` for a presentable demo.
 
 ## API
 

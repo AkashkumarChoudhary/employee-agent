@@ -5,13 +5,10 @@ WORKDIR /app
 # System deps kept minimal; wheels cover the rest.
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 
-COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install \
-    "pydantic>=2.6" "pydantic-settings>=2.2" "google-genai>=0.3" "ollama>=0.3" \
-    "langchain-text-splitters>=0.2" "pypdf>=4.0" "chromadb>=0.5" \
-    "langgraph>=0.2" "langgraph-checkpoint-sqlite>=2.0" \
-    "fastapi>=0.110" "python-multipart>=0.0.9" "slowapi>=0.1.9" "uvicorn>=0.29" \
-    "mcp>=1.0" "streamlit>=1.30"
+# Dependencies come from the lockfile (exact, tested versions) so the image is
+# reproducible and cannot drift; copied before the source for layer caching.
+COPY requirements.lock.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.lock.txt
 
 COPY employee_agent ./employee_agent
 

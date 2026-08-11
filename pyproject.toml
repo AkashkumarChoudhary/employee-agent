@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "employee-agent"
 version = "0.1.0"
@@ -17,12 +21,19 @@ dependencies = [
     "python-multipart>=0.0.9",
     "slowapi>=0.1.9",
     "uvicorn>=0.29",
-    "mcp>=1.0",
+    # mcp 2.0 removed mcp.shared.memory.create_connected_server_and_client_session,
+    # which mcp_tools/client.py uses for the in-memory server session.
+    "mcp>=1.0,<2",
     "streamlit>=1.30",
+    # Used directly by ui/client.py (also pulled in transitively by mcp).
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+include = ["employee_agent*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
